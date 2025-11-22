@@ -6,18 +6,23 @@ export default defineConfig(() => {
   // EIGENFOLIO_ALLOWED_HOSTS
   //
   // Examples:
-  //   EIGENFOLIO_ALLOWED_HOSTS=example.net
+  //   EIGENFOLIO_ALLOWED_HOSTS=example.com
   //   EIGENFOLIO_ALLOWED_HOSTS=example.net,example.com
-  //   EIGENFOLIO_ALLOWED_HOSTS=all
+  //   EIGENFOLIO_ALLOWED_HOSTS=true      # allow all
   const rawAllowedHosts = process.env.EIGENFOLIO_ALLOWED_HOSTS;
 
-  let allowedHosts: string[] | "all";
+  let allowedHosts: string[] | true;
 
   if (!rawAllowedHosts) {
-    // Default: allow all hosts (recommended to override in production)
-    allowedHosts = "all";
-  } else if (rawAllowedHosts === "all" || rawAllowedHosts === "*") {
-    allowedHosts = "all";
+    // Fallback: allow all hosts.
+    // In production you SHOULD override this with EIGENFOLIO_ALLOWED_HOSTS.
+    allowedHosts = true;
+  } else if (
+    rawAllowedHosts === "true" ||
+    rawAllowedHosts === "all" ||
+    rawAllowedHosts === "*"
+  ) {
+    allowedHosts = true;
   } else {
     allowedHosts = rawAllowedHosts
       .split(",")
