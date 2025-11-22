@@ -192,7 +192,7 @@ const [csvResult, setCsvResult] = useState<CsvImportResult | null>(null);
   const [form, setForm] = useState({
     asset_symbol: "IOTA",
     tx_type: "BUY",
-    amount: "0",
+    amount: "",
     price_fiat: "",
     fiat_currency: "EUR",
     timestamp: toLocalInputValue(new Date()),
@@ -272,7 +272,7 @@ const [csvResult, setCsvResult] = useState<CsvImportResult | null>(null);
     setForm({
       asset_symbol: "IOTA",
       tx_type: "BUY",
-      amount: "0",
+      amount: "",
       price_fiat: "",
       fiat_currency: "EUR",
       timestamp: toLocalInputValue(new Date()),
@@ -288,8 +288,28 @@ const [csvResult, setCsvResult] = useState<CsvImportResult | null>(null);
   try {
     setError(null);
 
+    const rawAmount = (form.amount ?? "").toString().trim();
+    if (!rawAmount) {
+      setError(
+        lang === "de"
+          ? "Bitte einen Betrag eingeben."
+          : "Please enter an amount."
+      );
+      return;
+    }
+
+    const parsedAmount = parseFloat(rawAmount.replace(",", "."));
+    if (!Number.isFinite(parsedAmount) || parsedAmount <= 0) {
+      setError(
+        lang === "de"
+          ? "Bitte einen gültigen Betrag größer als 0 eingeben."
+          : "Please enter a valid amount greater than 0."
+      );
+      return;
+    }
+
     const upperSymbol = form.asset_symbol.trim().toUpperCase();
-    const amount = parseFloat(form.amount);
+    const amount = parsedAmount;
 
     let priceFiat: number | null = null;
 if (form.price_fiat) {
@@ -1471,6 +1491,7 @@ const handleRestoreEncryptedBackup = async () => {
                   name="amount"
                   value={form.amount}
                   onChange={handleChange}
+                  placeholder="0"
                   required
                 />
               </div>
