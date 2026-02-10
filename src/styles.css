@@ -226,6 +226,18 @@ body {
   cursor: default;
 }
 
+.sync-indicator--sync {
+  box-shadow: 0 0 0 2px rgba(34, 197, 94, 0.25), 0 0 12px rgba(34, 197, 94, 0.18);
+}
+
+.sync-indicator--warning {
+  box-shadow: 0 0 0 2px rgba(234, 179, 8, 0.28), 0 0 12px rgba(234, 179, 8, 0.18);
+}
+
+.sync-indicator--danger {
+  box-shadow: 0 0 0 2px rgba(239, 68, 68, 0.3), 0 0 12px rgba(239, 68, 68, 0.2);
+}
+
 .profile-dropdown {
   position: relative;
 }
