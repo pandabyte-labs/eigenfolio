@@ -29,6 +29,27 @@ const RESET_CONFIRMATION_WORD = "RESET";
 const APP_VERSION = packageJson.version;
 const LOCAL_STORAGE_LANG_KEY = "traeky_lang";
 
+const LS_PROFILE_EXPORT_TS_SUFFIX = ":last-exported-at";
+const SYNC_DANGER_MS = 1000 * 60 * 60 * 24 * 3;
+
+function readProfileLastExportAt(profileId: string): string | null {
+  try {
+    const key = `traeky:profile:${profileId}${LS_PROFILE_EXPORT_TS_SUFFIX}`;
+    return window.localStorage.getItem(key);
+  } catch {
+    return null;
+  }
+}
+
+function writeProfileLastExportAt(profileId: string, value: string): void {
+  try {
+    const key = `traeky:profile:${profileId}${LS_PROFILE_EXPORT_TS_SUFFIX}`;
+    window.localStorage.setItem(key, value);
+  } catch {
+    // ignore
+  }
+}
+
 
 
 function formatTxTypeLabel(txType: string | null | undefined): string {
@@ -172,6 +193,7 @@ const App: React.FC = () => {
 
   const [activeProfile, setActiveProfile] = useState<ProfileSummary | null>(null);
   const [profileOverview, setProfileOverview] = useState<ProfileOverview | null>(null);
+  const [lastExportAt, setLastExportAt] = useState<string | null>(null);
 
   const [profileNameInput, setProfileNameInput] = useState("");
   const [profilePinInput, setProfilePinInput] = useState("");
@@ -712,6 +734,40 @@ useEffect(() => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [auth.mode, activeProfile?.id]);
 
+  useEffect(() => {
+    const profileId = activeProfile?.id;
+    if (!profileId) {
+      setLastExportAt(null);
+      return;
+    }
+    setLastExportAt(readProfileLastExportAt(profileId));
+  }, [activeProfile?.id]);
+
+
+  useEffect(() => {
+    const handler = () => {
+      const updated = getActiveProfileSummary();
+      if (updated) {
+        setActiveProfile(updated);
+      }
+    };
+
+    try {
+      window.addEventListener("traeky:profile-meta-updated", handler as EventListener);
+    } catch {
+      // Ignore.
+    }
+
+    return () => {
+      try {
+        window.removeEventListener("traeky:profile-meta-updated", handler as EventListener);
+      } catch {
+        // Ignore.
+      }
+    };
+  }, []);
+
+
   const handleChange = (
     e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>
   ) => {
@@ -958,6 +1014,8 @@ const handleExportCsv = () => {
     return;
   }
 
+  const exportedAt = new Date().toISOString();
+
   const headers = [
     "asset_symbol",
     "tx_type",
@@ -975,7 +1033,11 @@ const handleExportCsv = () => {
     "linked_tx_next_id",
     CSV_SCHEMA_VERSION_COLUMN,
     "holding_period_days",
+    "upcoming_holding_window_days",
     "base_currency",
+    "price_fetch_enabled",
+    "coingecko_api_key",
+    "traeky_exported_at",
   ];
 
   const rows = transactions.map((tx) => [
@@ -995,7 +1057,11 @@ const handleExportCsv = () => {
     tx.linked_tx_next_id != null ? String(tx.linked_tx_next_id) : "",
     String(CURRENT_CSV_SCHEMA_VERSION),
     String(config?.holding_period_days ?? DEFAULT_HOLDING_PERIOD_DAYS),
+    String(config?.upcoming_holding_window_days ?? DEFAULT_UPCOMING_WINDOW_DAYS),
     config?.base_currency ?? "EUR",
+    String(config?.price_fetch_enabled ?? true),
+    config?.coingecko_api_key ?? "",
+    exportedAt,
   ]);
 
   const escapeCell = (value: string) =>
@@ -1016,6 +1082,11 @@ const handleExportCsv = () => {
   a.click();
   a.remove();
   window.URL.revokeObjectURL(url);
+
+  if (activeProfile) {
+    writeProfileLastExportAt(activeProfile.id, exportedAt);
+    setLastExportAt(exportedAt);
+  }
 };
 
   // Save all settings in one coherent write.
@@ -1188,6 +1259,42 @@ const handleReloadHoldingPrices = async () => {
   ) {
     portfolioUsd = portfolioEur * fxRateEurUsd;
   }
+
+  const lastChangeAtMs = activeProfile?.updatedAt
+    ? new Date(activeProfile.updatedAt).getTime()
+    : 0;
+  const lastExportAtMs = lastExportAt ? new Date(lastExportAt).getTime() : 0;
+  const hasUnsavedExport =
+    !!activeProfile &&
+    (lastExportAt == null || lastChangeAtMs > lastExportAtMs + 1000);
+
+  const syncLevel = (() => {
+    if (!activeProfile) {
+      return "sync" as const;
+    }
+    if (!hasUnsavedExport) {
+      return "sync" as const;
+    }
+    const age = Date.now() - lastChangeAtMs;
+    if (age >= SYNC_DANGER_MS) {
+      return "danger" as const;
+    }
+    return "warning" as const;
+  })();
+
+  const syncTitle = (() => {
+    if (!activeProfile) {
+      return t(lang, "header_sync_status_no_profile");
+    }
+    if (!hasUnsavedExport) {
+      return `${t(lang, "header_sync_status_synced")}: ${lastExportAt ?? "-"}`;
+    }
+    const exportedLabel = lastExportAt ?? t(lang, "header_sync_status_never_exported");
+    if (syncLevel === "danger") {
+      return `${t(lang, "header_sync_status_stale")} (${exportedLabel})`;
+    }
+    return `${t(lang, "header_sync_status_pending")} (${exportedLabel})`;
+  })();
 
   return (
     <div className="layout">
@@ -1576,7 +1683,7 @@ const handleReloadHoldingPrices = async () => {
 
           </div>
           <div className="card settings-card">
-<div className="sidebar-section">
+<div className="sidebar-section" id="csv-section">
           <h2>{t(lang, "csv_title")}</h2>
           <p className="muted">
             {t(lang, "csv_expected")}
@@ -1855,6 +1962,31 @@ const handleReloadHoldingPrices = async () => {
                 {t(lang, "header_logout_button")}
               </button>
             )}
+            <button
+              type="button"
+              className={`icon-circle-button sync-indicator sync-indicator--${syncLevel}`}
+              onClick={() => {
+                handleExportCsv();
+                setIsProfileMenuOverlayOpen(false);
+                setIsSettingsOpen(false);
+              }}
+              aria-label={t(lang, "header_sync_button")}
+              title={syncTitle}
+              disabled={!activeProfile}
+            >
+              <svg
+                aria-hidden="true"
+                viewBox="0 0 24 24"
+                width="16"
+                height="16"
+                focusable="false"
+              >
+                <path
+                  d="M12 2C7.6 2 4 3.8 4 6v12c0 2.2 3.6 4 8 4s8-1.8 8-4V6c0-2.2-3.6-4-8-4zm0 2c3.9 0 6 .9 6 2s-2.1 2-6 2-6-.9-6-2 2.1-2 6-2zm0 6c3.9 0 6-.9 6-2v3c0 1.1-2.1 2-6 2s-6-.9-6-2V8c0 1.1 2.1 2 6 2zm0 5c3.9 0 6-.9 6-2v3c0 1.1-2.1 2-6 2s-6-.9-6-2v-3c0 1.1 2.1 2 6 2z"
+                  fill="currentColor"
+                />
+              </svg>
+            </button>
             <button
               type="button"
               className="icon-circle-button"

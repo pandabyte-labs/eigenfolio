@@ -254,22 +254,49 @@ export function logoutActiveProfileSession(): void {
 
 async function persistActiveProfile(): Promise<void> {
   if (!activeProfile) return;
+
   const payload: ProfileDataPayload = activeProfile.data;
   const encrypted: EncryptedPayload = await encryptProfilePayload(
     activeProfile.pinHash,
     payload,
   );
+
   const key = buildProfileDataKey(activeProfile.meta.id);
   writeJson(key, encrypted);
+
   const index = readProfilesIndex();
   const now = nowIso();
+
+  activeProfile.meta = {
+    ...activeProfile.meta,
+    updatedAt: now,
+  };
+
   const updatedProfiles = index.profiles.map((p) =>
-    p.id === activeProfile!.meta.id ? { ...p, updatedAt: now, name: activeProfile!.meta.name } : p,
+    p.id === activeProfile!.meta.id
+      ? { ...p, updatedAt: now, name: activeProfile!.meta.name }
+      : p,
   );
+
   writeProfilesIndex({
     currentProfileId: activeProfile.meta.id,
     profiles: updatedProfiles,
   });
+
+  try {
+    if (typeof window !== "undefined") {
+      window.dispatchEvent(
+        new CustomEvent("traeky:profile-meta-updated", {
+          detail: {
+            profileId: activeProfile.meta.id,
+            updatedAt: now,
+          },
+        }),
+      );
+    }
+  } catch {
+    // Ignore event dispatch errors.
+  }
 }
 
 export async function createInitialProfile(name: string, pin: string): Promise<ProfileSummary> {
@@ -365,16 +392,12 @@ export async function loginProfile(profileId: ProfileId, pin: string): Promise<P
     data,
   };
 
-  const now = nowIso();
-  const updatedMeta: ProfileSummary = { ...meta, updatedAt: now };
-  const updatedProfiles = index.profiles.map((p) => (p.id === meta!.id ? updatedMeta : p));
   writeProfilesIndex({
     currentProfileId: meta.id,
-    profiles: updatedProfiles,
+    profiles: index.profiles,
   });
-  activeProfile.meta = updatedMeta;
 
-  return updatedMeta;
+  return meta;
 }
 
 
