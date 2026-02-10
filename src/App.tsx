@@ -1008,7 +1008,10 @@ const handleExportCsv = () => {
     "linked_tx_next_id",
     CSV_SCHEMA_VERSION_COLUMN,
     "holding_period_days",
+    "upcoming_holding_window_days",
     "base_currency",
+    "price_fetch_enabled",
+    "coingecko_api_key",
     "traeky_exported_at",
   ];
 
@@ -1029,7 +1032,10 @@ const handleExportCsv = () => {
     tx.linked_tx_next_id != null ? String(tx.linked_tx_next_id) : "",
     String(CURRENT_CSV_SCHEMA_VERSION),
     String(config?.holding_period_days ?? DEFAULT_HOLDING_PERIOD_DAYS),
+    String(config?.upcoming_holding_window_days ?? DEFAULT_UPCOMING_WINDOW_DAYS),
     config?.base_currency ?? "EUR",
+    String(config?.price_fetch_enabled ?? true),
+    config?.coingecko_api_key ?? "",
     exportedAt,
   ]);
 

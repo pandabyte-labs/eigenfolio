@@ -254,6 +254,7 @@ export function logoutActiveProfileSession(): void {
 
 async function persistActiveProfile(): Promise<void> {
   if (!activeProfile) return;
+
   const payload: ProfileDataPayload = activeProfile.data;
   const encrypted: EncryptedPayload = await encryptProfilePayload(
     activeProfile.pinHash,
@@ -261,11 +262,19 @@ async function persistActiveProfile(): Promise<void> {
   );
   const key = buildProfileDataKey(activeProfile.meta.id);
   writeJson(key, encrypted);
+
   const index = readProfilesIndex();
   const now = nowIso();
+
+  // Keep in-memory meta consistent so the UI reflects changes immediately.
+  activeProfile.meta = { ...activeProfile.meta, updatedAt: now };
+
   const updatedProfiles = index.profiles.map((p) =>
-    p.id === activeProfile!.meta.id ? { ...p, updatedAt: now, name: activeProfile!.meta.name } : p,
+    p.id === activeProfile!.meta.id
+      ? { ...p, updatedAt: now, name: activeProfile!.meta.name }
+      : p,
   );
+
   writeProfilesIndex({
     currentProfileId: activeProfile.meta.id,
     profiles: updatedProfiles,
@@ -364,7 +373,6 @@ export async function loginProfile(profileId: ProfileId, pin: string): Promise<P
     pinHash,
     data,
   };
-
   // IMPORTANT: Do not mutate meta.updatedAt during login.
   // `updatedAt` is used as "data last changed" (e.g. export freshness).
   // A login itself must not mark the profile as "changed".
