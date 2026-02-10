@@ -734,14 +734,15 @@ useEffect(() => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [auth.mode, activeProfile?.id]);
 
+  const activeProfileId = activeProfile?.id;
+
   useEffect(() => {
-    const profileId = activeProfile?.id;
-    if (!profileId) {
+    if (!activeProfileId) {
       setLastExportAt(null);
       return;
     }
-    setLastExportAt(readProfileLastExportAt(profileId));
-  }, [activeProfile?.id]);
+    setLastExportAt(readProfileLastExportAt(activeProfileId));
+  }, [activeProfileId]);
 
   const handleChange = (
     e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>
