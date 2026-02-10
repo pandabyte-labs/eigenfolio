@@ -30,7 +30,6 @@ const APP_VERSION = packageJson.version;
 const LOCAL_STORAGE_LANG_KEY = "traeky_lang";
 
 const LS_PROFILE_EXPORT_TS_SUFFIX = ":last-exported-at";
-const SYNC_WARNING_MS = 1000 * 60 * 60 * 24;
 const SYNC_DANGER_MS = 1000 * 60 * 60 * 24 * 3;
 
 function readProfileLastExportAt(profileId: string): string | null {
@@ -736,11 +735,12 @@ useEffect(() => {
   }, [auth.mode, activeProfile?.id]);
 
   useEffect(() => {
-    if (!activeProfile) {
+    const profileId = activeProfile?.id;
+    if (!profileId) {
       setLastExportAt(null);
       return;
     }
-    setLastExportAt(readProfileLastExportAt(activeProfile.id));
+    setLastExportAt(readProfileLastExportAt(profileId));
   }, [activeProfile?.id]);
 
   const handleChange = (
