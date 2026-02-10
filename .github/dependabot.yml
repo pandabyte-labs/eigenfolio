@@ -6,14 +6,13 @@ updates:
       interval: "daily"
     target-branch: "develop"
     open-pull-requests-limit: 5
+    ignore:
+      - dependency-name: "eslint"
+        versions: [">=10"]
     groups:
       npm-dependencies:
         patterns:
           - "*"
-
-    ignore:
-      - dependency-name: "eslint"
-        update-types: ["version-update:semver-major"]
 
   - package-ecosystem: "github-actions"
     directory: "/"
