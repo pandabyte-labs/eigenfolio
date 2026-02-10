@@ -1935,14 +1935,8 @@ const handleReloadHoldingPrices = async () => {
               type="button"
               className={`icon-circle-button sync-indicator sync-indicator--${syncLevel}`}
               onClick={() => {
-                setIsSettingsOpen(true);
                 setIsProfileMenuOverlayOpen(false);
-                window.setTimeout(() => {
-                  const el = document.getElementById("csv-section");
-                  if (el) {
-                    el.scrollIntoView({ behavior: "smooth", block: "start" });
-                  }
-                }, 0);
+                handleExportCsv();
               }}
               aria-label={t(lang, "header_sync_button")}
               title={syncTitle}

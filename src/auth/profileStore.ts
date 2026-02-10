@@ -365,16 +365,15 @@ export async function loginProfile(profileId: ProfileId, pin: string): Promise<P
     data,
   };
 
-  const now = nowIso();
-  const updatedMeta: ProfileSummary = { ...meta, updatedAt: now };
-  const updatedProfiles = index.profiles.map((p) => (p.id === meta!.id ? updatedMeta : p));
+  // IMPORTANT: Do not mutate meta.updatedAt during login.
+  // `updatedAt` is used as "data last changed" (e.g. export freshness).
+  // A login itself must not mark the profile as "changed".
   writeProfilesIndex({
     currentProfileId: meta.id,
-    profiles: updatedProfiles,
+    profiles: index.profiles,
   });
-  activeProfile.meta = updatedMeta;
 
-  return updatedMeta;
+  return meta;
 }
 
 
