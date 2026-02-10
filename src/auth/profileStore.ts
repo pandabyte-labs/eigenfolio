@@ -260,14 +260,17 @@ async function persistActiveProfile(): Promise<void> {
     activeProfile.pinHash,
     payload,
   );
+
   const key = buildProfileDataKey(activeProfile.meta.id);
   writeJson(key, encrypted);
 
   const index = readProfilesIndex();
   const now = nowIso();
 
-  // Keep in-memory meta consistent so the UI reflects changes immediately.
-  activeProfile.meta = { ...activeProfile.meta, updatedAt: now };
+  activeProfile.meta = {
+    ...activeProfile.meta,
+    updatedAt: now,
+  };
 
   const updatedProfiles = index.profiles.map((p) =>
     p.id === activeProfile!.meta.id
@@ -279,6 +282,21 @@ async function persistActiveProfile(): Promise<void> {
     currentProfileId: activeProfile.meta.id,
     profiles: updatedProfiles,
   });
+
+  try {
+    if (typeof window !== "undefined") {
+      window.dispatchEvent(
+        new CustomEvent("traeky:profile-meta-updated", {
+          detail: {
+            profileId: activeProfile.meta.id,
+            updatedAt: now,
+          },
+        }),
+      );
+    }
+  } catch {
+    // Ignore event dispatch errors.
+  }
 }
 
 export async function createInitialProfile(name: string, pin: string): Promise<ProfileSummary> {
@@ -373,9 +391,7 @@ export async function loginProfile(profileId: ProfileId, pin: string): Promise<P
     pinHash,
     data,
   };
-  // IMPORTANT: Do not mutate meta.updatedAt during login.
-  // `updatedAt` is used as "data last changed" (e.g. export freshness).
-  // A login itself must not mark the profile as "changed".
+
   writeProfilesIndex({
     currentProfileId: meta.id,
     profiles: index.profiles,

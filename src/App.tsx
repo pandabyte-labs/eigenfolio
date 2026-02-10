@@ -743,6 +743,31 @@ useEffect(() => {
     setLastExportAt(readProfileLastExportAt(profileId));
   }, [activeProfile?.id]);
 
+
+  useEffect(() => {
+    const handler = () => {
+      const updated = getActiveProfileSummary();
+      if (updated) {
+        setActiveProfile(updated);
+      }
+    };
+
+    try {
+      window.addEventListener("traeky:profile-meta-updated", handler as EventListener);
+    } catch {
+      // Ignore.
+    }
+
+    return () => {
+      try {
+        window.removeEventListener("traeky:profile-meta-updated", handler as EventListener);
+      } catch {
+        // Ignore.
+      }
+    };
+  }, []);
+
+
   const handleChange = (
     e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>
   ) => {
@@ -1941,8 +1966,9 @@ const handleReloadHoldingPrices = async () => {
               type="button"
               className={`icon-circle-button sync-indicator sync-indicator--${syncLevel}`}
               onClick={() => {
-                setIsProfileMenuOverlayOpen(false);
                 handleExportCsv();
+                setIsProfileMenuOverlayOpen(false);
+                setIsSettingsOpen(false);
               }}
               aria-label={t(lang, "header_sync_button")}
               title={syncTitle}
