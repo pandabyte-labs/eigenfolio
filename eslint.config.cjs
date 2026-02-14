@@ -1,7 +1,12 @@
-const tsParser = require("@typescript-eslint/parser");
-const tsPlugin = require("@typescript-eslint/eslint-plugin");
-const reactRefresh = require("eslint-plugin-react-refresh");
-const reactHooks = require("eslint-plugin-react-hooks");
+const tsParserImport = require("@typescript-eslint/parser");
+const tsPluginImport = require("@typescript-eslint/eslint-plugin");
+const reactRefreshImport = require("eslint-plugin-react-refresh");
+const reactHooksImport = require("eslint-plugin-react-hooks");
+
+const tsParser = tsParserImport.default ?? tsParserImport;
+const tsPlugin = tsPluginImport.default ?? tsPluginImport;
+const reactRefresh = reactRefreshImport.default ?? reactRefreshImport;
+const reactHooks = reactHooksImport.default ?? reactHooksImport;
 
 /** @type {import("eslint").Linter.FlatConfig[]} */
 module.exports = [
@@ -21,18 +26,11 @@ module.exports = [
       "react-hooks": reactHooks,
     },
     rules: {
-      ...(tsPlugin.configs && tsPlugin.configs.recommended
-        ? tsPlugin.configs.recommended.rules
-        : {}),
-      ...(reactHooks.configs && reactHooks.configs.recommended
-        ? reactHooks.configs.recommended.rules
-        : {}),
+      ...(tsPlugin.configs?.recommended?.rules ?? {}),
+      ...(reactHooks.configs?.recommended?.rules ?? {}),
       "@typescript-eslint/no-unused-vars": [
         "error",
-        {
-          argsIgnorePattern: "^_",
-          varsIgnorePattern: "^_",
-        },
+        { argsIgnorePattern: "^_", varsIgnorePattern: "^_" },
       ],
       "react-refresh/only-export-components": ["warn", { allowConstantExport: true }],
     },
