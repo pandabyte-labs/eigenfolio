@@ -13,7 +13,7 @@
   "dependencies": {
     "react": "^19.2.3",
     "react-dom": "^19.2.3",
-    "jspdf": "^4.1.0"
+    "jspdf": "^4.2.0"
   },
   "devDependencies": {
     "@types/react": "^19.2.8",
