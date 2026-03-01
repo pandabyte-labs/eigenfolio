@@ -69,15 +69,6 @@ docker run --rm -p 5173:5173 --name traeky-testing pandabytelabs/traeky:testing
 
 The app supports configuration via environment variables.
 
-- `TRAEKY_PROFILE_ENCRYPTION_KEY`
-  - Generate one with 'openssl rand -base64 32'
-  - **If the key is changed**, all local profiles can no longer be decrypted.
-
-- `TRAEKY_PROFILE_PIN_SALT`
-  - Must be **exactly 64 characters** long and only contain `A-Z`, `a-z`, or `0-9`
-  - If the value is invalid, Traeky falls back to a built-in default salt and logs an error in the browser console
-  - For best security, set this to a random 64-character value and keep it stable once profiles exist
-
 - `TRAEKY_ALLOWED_HOSTS`
   - Controls which `Host` headers the dev server will accept
   - Examples:
@@ -85,14 +76,12 @@ The app supports configuration via environment variables.
     - `TRAEKY_ALLOWED_HOSTS=example.net,example.com`
     - `TRAEKY_ALLOWED_HOSTS=all` (or `true` / `*`) to allow all hosts
 
-Example with online features disabled and a custom profile PIN salt:
+Example with a restricted host allowlist:
 
 ```bash
 docker run --rm \
   -p 5173:5173 \
   -e TRAEKY_ALLOWED_HOSTS=myTraekyDomain.tld \
-  -e TRAEKY_PROFILE_ENCRYPTION_KEY=here-your-long-random-key \
-  -e TRAEKY_PROFILE_PIN_SALT=CHANGEMETOARANDOMSIXTYFOURCHARALPHANUMERICVALUE00000000000000000 \
   --name traeky \
   pandabytelabs/traeky:latest
 ```
