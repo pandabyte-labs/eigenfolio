@@ -1,0 +1,35 @@
+name: Backport Dependabot merges to develop
+
+on:
+  pull_request:
+    types: [closed]
+    branches: [main]
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  backport:
+    if: github.event.pull_request.merged == true && github.event.pull_request.user.login == 'dependabot[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Cherry-pick merge commit onto develop
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git checkout develop
+          git cherry-pick -x ${{ github.event.pull_request.merge_commit_sha }}
+
+      - name: Create PR to develop
+        uses: peter-evans/create-pull-request@v6
+        with:
+          branch: backport/dependabot-${{ github.event.pull_request.number }}
+          base: develop
+          title: "Backport: ${{ github.event.pull_request.title }}"
+          body: "Automated backport of Dependabot PR #${{ github.event.pull_request.number }} to develop."
+          labels: backport, dependabot
