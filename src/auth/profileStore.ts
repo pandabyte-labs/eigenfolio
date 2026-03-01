@@ -2,7 +2,15 @@
 import type { AppConfig, Transaction } from "../domain/types";
 import { DEFAULT_HOLDING_PERIOD_DAYS, DEFAULT_UPCOMING_WINDOW_DAYS } from "../domain/config";
 import type { EncryptedPayload } from "../crypto/cryptoService";
-import { hashPin, encryptProfilePayload, decryptProfilePayload } from "./profileSecurity";
+import {
+  encryptProfilePayload,
+  decryptProfilePayload,
+  decryptLegacyProfilePayload,
+  hasLegacyCryptoConfig,
+  hashLegacyPin,
+  validateProfilePassphrase,
+  passphraseNeedsUpgrade,
+} from "./profileSecurity";
 
 export type ProfileId = string;
 
@@ -34,7 +42,8 @@ type ProfilesIndex = {
 
 type ActiveProfileSession = {
   meta: ProfileSummary;
-  pinHash: string;
+  passphrase: string;
+  requiresPassphraseUpgrade: boolean;
   data: ProfileDataPayload;
 };
 
@@ -257,7 +266,7 @@ async function persistActiveProfile(): Promise<void> {
 
   const payload: ProfileDataPayload = activeProfile.data;
   const encrypted: EncryptedPayload = await encryptProfilePayload(
-    activeProfile.pinHash,
+    activeProfile.passphrase,
     payload,
   );
 
@@ -301,7 +310,9 @@ async function persistActiveProfile(): Promise<void> {
 
 export async function createInitialProfile(name: string, pin: string): Promise<ProfileSummary> {
   const trimmedName = name.trim() || "Default";
-  const pinHash = await hashPin(pin);
+  const validationError = validateProfilePassphrase(pin);
+  if (validationError === "too_short") throw new Error("PIN_TOO_SHORT");
+  if (validationError === "too_weak") throw new Error("PIN_TOO_WEAK");
 
   const index = readProfilesIndex();
   const id = generateProfileId();
@@ -336,7 +347,8 @@ export async function createInitialProfile(name: string, pin: string): Promise<P
 
   activeProfile = {
     meta,
-    pinHash,
+    passphrase: pin,
+    requiresPassphraseUpgrade: false,
     data,
   };
 
@@ -345,10 +357,6 @@ export async function createInitialProfile(name: string, pin: string): Promise<P
     currentProfileId: id,
     profiles,
   });
-
-  const pinIndex = readProfilePinIndex();
-  pinIndex[id] = pinHash;
-  writeProfilePinIndex(pinIndex);
 
   await persistActiveProfile();
 
@@ -361,19 +369,8 @@ export async function loginProfile(profileId: ProfileId, pin: string): Promise<P
     throw new Error("Profile not found");
   }
 
-  const pinIndex = readProfilePinIndex();
-  const pinHash = await hashPin(pin);
-
-  let meta: ProfileSummary | null =
-    index.profiles.find((p) => p.id === profileId && pinIndex[p.id] === pinHash) ?? null;
-
-  if (!meta) {
-    meta = index.profiles.find((p) => pinIndex[p.id] === pinHash) ?? null;
-  }
-
-  if (!meta) {
-    throw new Error("Invalid PIN");
-  }
+  const meta: ProfileSummary | null = index.profiles.find((p) => p.id === profileId) ?? null;
+  if (!meta) throw new Error("Profile not found");
 
   const key = buildProfileDataKey(meta.id);
   const encrypted = readJson<EncryptedPayload>(key);
@@ -381,16 +378,46 @@ export async function loginProfile(profileId: ProfileId, pin: string): Promise<P
     throw new Error("Profile data not found");
   }
 
-  const data = await decryptProfilePayload<ProfileDataPayload>(pinHash, encrypted);
-  if (!data || data.version !== 1) {
-    throw new Error("Unsupported profile data version");
+  let data: ProfileDataPayload | null = null;
+  try {
+    data = await decryptProfilePayload<ProfileDataPayload>(pin, encrypted);
+  } catch {
+    data = null;
   }
+
+  let migratedFromLegacy = false;
+  if (!data) {
+    const pinIndex = readProfilePinIndex();
+    const legacyHash = await hashLegacyPin(pin);
+    if (pinIndex[meta.id] !== legacyHash) {
+      throw new Error("Invalid PIN");
+    }
+    if (!hasLegacyCryptoConfig()) {
+      throw new Error("Legacy crypto not configured");
+    }
+    data = await decryptLegacyProfilePayload<ProfileDataPayload>(encrypted);
+    migratedFromLegacy = true;
+  }
+
+  if (!data || data.version !== 1) throw new Error("Unsupported profile data version");
 
   activeProfile = {
     meta,
-    pinHash,
+    passphrase: pin,
+    requiresPassphraseUpgrade: passphraseNeedsUpgrade(pin),
     data,
   };
+
+  if (migratedFromLegacy) {
+    const pinIndex = readProfilePinIndex();
+    delete pinIndex[meta.id];
+    if (Object.keys(pinIndex).length === 0) {
+      removeKey(PROFILE_PIN_INDEX_KEY);
+    } else {
+      writeProfilePinIndex(pinIndex);
+    }
+    await persistActiveProfile();
+  }
 
   writeProfilesIndex({
     currentProfileId: meta.id,
@@ -398,6 +425,11 @@ export async function loginProfile(profileId: ProfileId, pin: string): Promise<P
   });
 
   return meta;
+}
+
+export function getActiveProfilePassphraseUpgradeRequired(): boolean {
+  if (!activeProfile) return false;
+  return activeProfile.requiresPassphraseUpgrade;
 }
 
 
@@ -447,7 +479,9 @@ export async function createAdditionalProfile(
   pin: string,
 ): Promise<ProfileSummary> {
   const trimmedName = name.trim() || "Profile";
-  const pinHash = await hashPin(pin);
+  const validationError = validateProfilePassphrase(pin);
+  if (validationError === "too_short") throw new Error("PIN_TOO_SHORT");
+  if (validationError === "too_weak") throw new Error("PIN_TOO_WEAK");
 
   const index = readProfilesIndex();
   const id = generateProfileId();
@@ -462,7 +496,7 @@ export async function createAdditionalProfile(
 
   const data = createEmptyProfileData();
   const payload: ProfileDataPayload = data;
-  const encrypted: EncryptedPayload = await encryptProfilePayload(pinHash, payload);
+  const encrypted: EncryptedPayload = await encryptProfilePayload(pin, payload);
   const key = buildProfileDataKey(id);
   writeJson(key, encrypted);
 
@@ -473,13 +507,10 @@ export async function createAdditionalProfile(
     profiles,
   });
 
-  const pinIndex = readProfilePinIndex();
-  pinIndex[id] = pinHash;
-  writeProfilePinIndex(pinIndex);
-
   activeProfile = {
     meta,
-    pinHash,
+    passphrase: pin,
+    requiresPassphraseUpgrade: false,
     data,
   };
 
@@ -498,8 +529,7 @@ export async function verifyActiveProfilePin(pin: string): Promise<boolean> {
   if (!activeProfile) {
     throw new Error("No active profile session");
   }
-  const candidateHash = await hashPin(pin);
-  return candidateHash === activeProfile.pinHash;
+  return pin === activeProfile.passphrase;
 }
 
 export function renameActiveProfile(name: string): void {
@@ -524,21 +554,16 @@ export async function changeActiveProfilePin(
   if (!activeProfile) {
     throw new Error("No active profile session");
   }
-  if (!activeProfile) {
-    throw new Error("No active profile session");
-  }
-  const currentHash = await hashPin(currentPin);
-  if (currentHash !== activeProfile.pinHash) {
+  if (currentPin !== activeProfile.passphrase) {
     throw new Error("Invalid current PIN");
   }
-  const newHash = await hashPin(newPin);
-  activeProfile.pinHash = newHash;
+  const validationError = validateProfilePassphrase(newPin);
+  if (validationError === "too_short") throw new Error("PIN_TOO_SHORT");
+  if (validationError === "too_weak") throw new Error("PIN_TOO_WEAK");
 
-  const pinIndex = readProfilePinIndex();
-  pinIndex[activeProfile.meta.id] = newHash;
-  writeProfilePinIndex(pinIndex);
-
-  void persistActiveProfile();
+  activeProfile.passphrase = newPin;
+  activeProfile.requiresPassphraseUpgrade = false;
+  await persistActiveProfile();
 }
 
 export function deleteActiveProfile(): void {

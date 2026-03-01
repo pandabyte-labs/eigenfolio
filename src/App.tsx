@@ -15,6 +15,7 @@ import {
   deleteActiveProfile,
   getActiveProfileSummary,
   logoutActiveProfileSession,
+  getActiveProfilePassphraseUpgradeRequired,
 } from "./auth/profileStore";
 import { t, Language, getDefaultLanguage } from "./i18n";
 import { CURRENT_CSV_SCHEMA_VERSION, CSV_SCHEMA_VERSION_COLUMN } from "./data/csvSchema";
@@ -220,6 +221,7 @@ const App: React.FC = () => {
   const [pinChangeNewPinInput, setPinChangeNewPinInput] = useState("");
   const [pinChangeNewPinConfirmInput, setPinChangeNewPinConfirmInput] = useState("");
   const [pinChangeError, setPinChangeError] = useState<string | null>(null);
+  const [mustUpgradePassphrase, setMustUpgradePassphrase] = useState(false);
 
   const profileDropdownRef = useRef<HTMLDivElement | null>(null);
   const [isProfileMenuOverlayOpen, setIsProfileMenuOverlayOpen] = useState(false);
@@ -511,9 +513,14 @@ useEffect(() => {
       setProfileSetupError(null);
     } catch (err) {
       console.error("Failed to create initial profile", err);
-      setProfileSetupError(
-        t(lang, "profile_error_create_failed"),
-      );
+      const msg = err instanceof Error ? err.message : "";
+      if (msg === "PIN_TOO_SHORT") {
+        setProfileSetupError(t(lang, "pin_error_too_short"));
+      } else if (msg === "PIN_TOO_WEAK") {
+        setProfileSetupError(t(lang, "pin_error_too_weak"));
+      } else {
+        setProfileSetupError(t(lang, "profile_error_create_failed"));
+      }
     }
   };
 
@@ -535,9 +542,19 @@ useEffect(() => {
       setActiveProfile(summary);
       const overview = getProfileOverview();
       setProfileOverview(overview);
-      setLoginPinInput("");
       setLoginError(null);
       setIsProfileLoginOverlayOpen(false);
+
+      if (getActiveProfilePassphraseUpgradeRequired()) {
+        setMustUpgradePassphrase(true);
+        setPinChangeCurrentPinInput(loginPinInput);
+        setPinChangeNewPinInput("");
+        setPinChangeNewPinConfirmInput("");
+        setPinChangeError(null);
+        setIsPinChangeOverlayOpen(true);
+      }
+
+      setLoginPinInput("");
     } catch (err) {
       console.error("Failed to log into profile", err);
       setLoginError(t(lang, "pin_error_invalid"));
@@ -572,9 +589,14 @@ useEffect(() => {
       setCreateProfileError(null);
     } catch (err) {
       console.error("Failed to create additional profile", err);
-      setCreateProfileError(
-        t(lang, "profile_error_create_failed"),
-      );
+      const msg = err instanceof Error ? err.message : "";
+      if (msg === "PIN_TOO_SHORT") {
+        setCreateProfileError(t(lang, "pin_error_too_short"));
+      } else if (msg === "PIN_TOO_WEAK") {
+        setCreateProfileError(t(lang, "pin_error_too_weak"));
+      } else {
+        setCreateProfileError(t(lang, "profile_error_create_failed"));
+      }
     }
   };
 
@@ -642,11 +664,19 @@ useEffect(() => {
       setPinChangeNewPinInput("");
       setPinChangeNewPinConfirmInput("");
       setIsPinChangeOverlayOpen(false);
+      setMustUpgradePassphrase(false);
     } catch (err) {
       console.error("Failed to change profile PIN", err);
-      setPinChangeError(
-        t(lang, "pin_change_error_current_invalid"),
-      );
+      const msg = err instanceof Error ? err.message : "";
+      if (msg === "Invalid current PIN") {
+        setPinChangeError(t(lang, "pin_change_error_current_invalid"));
+      } else if (msg === "PIN_TOO_SHORT") {
+        setPinChangeError(t(lang, "pin_error_too_short"));
+      } else if (msg === "PIN_TOO_WEAK") {
+        setPinChangeError(t(lang, "pin_error_too_weak"));
+      } else {
+        setPinChangeError(t(lang, "profile_error_create_failed"));
+      }
     }
   };
 
@@ -2031,6 +2061,7 @@ const handleReloadHoldingPrices = async () => {
                       setPinChangeNewPinInput("");
                       setPinChangeNewPinConfirmInput("");
                       setPinChangeError(null);
+                      setMustUpgradePassphrase(false);
                       setIsPinChangeOverlayOpen(true);
                       setIsProfileMenuOverlayOpen(false);
                     }}
@@ -2061,6 +2092,7 @@ const handleReloadHoldingPrices = async () => {
                 if (!activeProfile) return;
                 logoutActiveProfileSession();
                 setActiveProfile(null);
+                setMustUpgradePassphrase(false);
                 setProfileOverview(null);
                 setHoldings([]);
                 setHoldingsPortfolioEur(null);
@@ -3165,6 +3197,7 @@ const handleReloadHoldingPrices = async () => {
                     setPinChangeNewPinInput("");
                     setPinChangeNewPinConfirmInput("");
                     setPinChangeError(null);
+                    setMustUpgradePassphrase(false);
                     setIsPinChangeOverlayOpen(true);
                     setIsProfileMenuOverlayOpen(false);
                   }}
@@ -3269,7 +3302,7 @@ const handleReloadHoldingPrices = async () => {
           <div className="modal">
             <h2>{t(lang, "pin_change_title")}</h2>
             <p className="muted">
-              {t(lang, "pin_change_description")}
+              {mustUpgradePassphrase ? t(lang, "pin_upgrade_description") : t(lang, "pin_change_description")}
             </p>
             {pinChangeError && (
               <p className="error-text modal-error">{pinChangeError}</p>
@@ -3321,19 +3354,21 @@ const handleReloadHoldingPrices = async () => {
                 </label>
               </div>
               <div className="modal-actions">
-                <button
-                  type="button"
-                  className="btn-secondary"
-                  onClick={() => {
-                    setIsPinChangeOverlayOpen(false);
-                    setPinChangeCurrentPinInput("");
-                    setPinChangeNewPinInput("");
-                    setPinChangeNewPinConfirmInput("");
-                    setPinChangeError(null);
-                  }}
-                >
-                  {t(lang, "form_cancel")}
-                </button>
+                {!mustUpgradePassphrase && (
+                  <button
+                    type="button"
+                    className="btn-secondary"
+                    onClick={() => {
+                      setIsPinChangeOverlayOpen(false);
+                      setPinChangeCurrentPinInput("");
+                      setPinChangeNewPinInput("");
+                      setPinChangeNewPinConfirmInput("");
+                      setPinChangeError(null);
+                    }}
+                  >
+                    {t(lang, "form_cancel")}
+                  </button>
+                )}
                 <button type="submit" className="btn-primary">
                   {t(lang, "pin_change_submit")}
                 </button>

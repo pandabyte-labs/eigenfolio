@@ -6,8 +6,6 @@ services:
     ports:
       - "5173:5173"
     environment:
-      TRAEKY_PROFILE_ENCRYPTION_KEY: "here-your-long-random-key" # Generate one with 'openssl rand -base64 32'
-      TRAEKY_PROFILE_PIN_SALT: "CHANGEMETOARANDOMSIXTYFOURCHARALPHANUMERICVALUE00000000000000000" # Must be exactly 64 characters long a-Z,0-9
       TRAEKY_ALLOWED_HOSTS: "all" # Default: allow all hosts (recommended to override in production)
     healthcheck:
       test: ["CMD-SHELL", "curl -fsS http://localhost:5173 || exit 1"]
