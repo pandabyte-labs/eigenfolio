@@ -11,6 +11,7 @@ RUN npm run build
 
 # Runtime-Stage: nur statische Assets ausliefern
 FROM nginx:stable-alpine
+RUN apk upgrade --no-cache
 
 COPY nginx.conf /etc/nginx/conf.d/default.conf
 COPY --from=builder /app/dist /usr/share/nginx/html
