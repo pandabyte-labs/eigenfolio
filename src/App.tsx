@@ -2306,7 +2306,7 @@ const handleReloadHoldingPrices = async () => {
                     .filter((y) => y),
                 ),
               )
-                .sort()
+                .sort((a, b) => Number(b) - Number(a))
                 .map((year) => (
                   <option key={year} value={year}>
                     {year}
