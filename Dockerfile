@@ -1,20 +1,20 @@
-FROM node:24-slim
+# Build-Stage: Node nur zum Bauen verwenden
+FROM node:24-bookworm-slim AS builder
 
 WORKDIR /app
 
-# curl für Healthcheck
-RUN apt-get update \
-  && apt-get install -y curl \
-  && rm -rf /var/lib/apt/lists/*
-
-# Wichtig: lockfile mitkopieren
 COPY package.json package-lock.json ./
-
-# Install exakt nach Lockfile
 RUN npm ci
 
 COPY . .
+RUN npm run build
 
-EXPOSE 5173
+# Runtime-Stage: nur statische Assets ausliefern
+FROM nginx:stable-alpine
 
-CMD ["npm", "run", "dev", "--", "--host", "0.0.0.0"]
+COPY nginx.conf /etc/nginx/conf.d/default.conf
+COPY --from=builder /app/dist /usr/share/nginx/html
+
+EXPOSE 80
+
+HEALTHCHECK --interval=30s --timeout=5s --retries=3 CMD wget -qO- http://127.0.0.1/ >/dev/null 2>&1 || exit 1
