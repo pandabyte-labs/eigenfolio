@@ -4,11 +4,11 @@ services:
     container_name: traeky
     restart: unless-stopped
     ports:
-      - "5173:5173"
+      - "5173:80"
     environment:
       TRAEKY_ALLOWED_HOSTS: "all" # Default: allow all hosts (recommended to override in production)
     healthcheck:
-      test: ["CMD-SHELL", "curl -fsS http://localhost:5173 || exit 1"]
+      test: ["CMD-SHELL", "wget -qO- http://localhost/healthz >/dev/null 2>&1 || exit 1"]
       interval: 30s
       timeout: 10s
       retries: 5
