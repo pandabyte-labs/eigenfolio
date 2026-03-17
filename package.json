@@ -1,6 +1,6 @@
 {
   "name": "traeky",
-  "version": "26.3.14",
+  "version": "26.3.17",
   "private": true,
   "scripts": {
     "dev": "vite",
