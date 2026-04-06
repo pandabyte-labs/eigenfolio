@@ -25,7 +25,7 @@
     "eslint-plugin-react-hooks": "^7.0.1",
     "eslint-plugin-react-refresh": "^0.5.2",
     "typescript": "^5.5.3",
-    "vite": "^8.0.0"
+    "vite": "^8.0.5"
   },
   "overrides": {
     "flatted": "^3.4.1"
