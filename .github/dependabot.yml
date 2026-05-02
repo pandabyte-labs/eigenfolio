@@ -1,27 +1,15 @@
 version: 2
 updates:
-  - package-ecosystem: "npm"
+  - package-ecosystem: "gomod"
     directory: "/"
     schedule:
-      interval: "daily"
-    target-branch: "develop"
-    open-pull-requests-limit: 5
-    ignore:
-      - dependency-name: "eslint"
-        update-types:
-          - "version-update:semver-major"
-    groups:
-      npm-dependencies:
-        patterns:
-          - "*"
-
+      interval: "weekly"
+    open-pull-requests-limit: 10
+  - package-ecosystem: "docker"
+    directory: "/"
+    schedule:
+      interval: "weekly"
   - package-ecosystem: "github-actions"
     directory: "/"
     schedule:
-      interval: "daily"
-    target-branch: "develop"
-    open-pull-requests-limit: 5
-    groups:
-      github-actions:
-        patterns:
-          - "*"
+      interval: "weekly"

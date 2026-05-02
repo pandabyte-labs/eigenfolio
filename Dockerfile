@@ -1,21 +1,18 @@
-# Build-Stage: Node nur zum Bauen verwenden
-FROM node:24-bookworm-slim AS builder
-
-WORKDIR /app
-
-COPY package.json package-lock.json ./
-RUN npm ci
-
+# syntax=docker/dockerfile:1.7
+FROM golang:1.26-alpine AS build
+WORKDIR /src
+COPY go.mod ./
+RUN go mod download
 COPY . .
-RUN npm run build
+RUN CGO_ENABLED=0 GOOS=linux go build -trimpath -ldflags="-s -w" -o /out/traeky ./cmd/traeky
 
-# Runtime-Stage: nur statische Assets ausliefern
-FROM nginx:stable-alpine
-RUN apk upgrade --no-cache
-
-COPY nginx.conf /etc/nginx/conf.d/default.conf
-COPY --from=builder /app/dist /usr/share/nginx/html
-
-EXPOSE 80
-
-HEALTHCHECK --interval=30s --timeout=5s --retries=3 CMD wget -qO- http://127.0.0.1/ >/dev/null 2>&1 || exit 1
+FROM gcr.io/distroless/static-debian12:nonroot
+WORKDIR /
+COPY --from=build /out/traeky /traeky
+VOLUME ["/data"]
+EXPOSE 8080
+ENV TRAEKY_ADDR=:8080 \
+    TRAEKY_MODE=all \
+    TRAEKY_DATA_DIR=/data
+USER nonroot:nonroot
+ENTRYPOINT ["/traeky"]

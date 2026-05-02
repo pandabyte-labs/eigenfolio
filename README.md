@@ -1,197 +1,156 @@
 # Traeky
 
-[![Release][release-shield]][release-url]
+Traeky is a fresh Go implementation of the Traeky concept: a local-first crypto portfolio dashboard whose UI runs in the user's browser, with an optional self-hosted Cloud service for encrypted backups.
 
-> Local (and self-hosted) crypto portfolio.
+## What changed
 
-Traeky is a privacy-friendly, self-hostable web app to track your crypto portfolio and generate a basic report.
-The UI runs entirely in your browser, data is stored locally.
+- New Go backend serving an embedded browser app and optional Cloud API.
+- New dashboard layout with KPI tiles, allocation chart, timeline chart, holdings, expiring holding-period view, transaction filters, CSV import/export, downloadable PDF reports, and security settings.
+- End-to-end encrypted sync: the Cloud server stores only encrypted vault envelopes and has no master key.
+- Anonymous Cloud mapping: no accounts and no API login. A generated high-entropy Sync-Key identifies the encrypted remote vault.
+- Optional per-vault Cloud Auth-Secret: users can set or generate an additional secret in the dashboard. The browser hashes it before sending it, the server stores only a salted PBKDF2 hash, and protected vaults cannot be downloaded, overwritten, or deleted with the Sync-Key alone.
+- Collision-safe first upload: if the generated Sync-Key is already occupied, the Cloud API returns `409 Conflict` and does not overwrite existing data.
+- Legacy migration: on first load the app detects old Traeky localStorage keys and old encrypted profile entries. CSV import remains available as fallback.
+- CI, Docker build workflow, GHCR publishing, optional Docker Hub publishing, tests, and Dependabot config are included.
 
----
-
-## Features
-
-- Track crypto holdings and transactions
-- Portfolio and gain/loss overview
-- Export a PDF report
-- CSV import & export (Traeky-specific schema)
-- Local-first: everything runs in the browser, no external API required (except coingecko price fetching) for basic usage
-- English and German translations
-
----
-
-## Project status
-
-Traeky is currently in an early version (see version badge above).
-APIs, data schema and UI are subject to change between releases.
-
----
-
-## Docker images
-
-Docker images are published to Docker Hub:
-
-- `pandabytelabs/traeky:latest` – latest stable release from `main`
-- `pandabytelabs/traeky:stable` – alias for the latest stable release
-- `pandabytelabs/traeky:testing` – pre-release builds from `develop`
-- `pandabytelabs/traeky:nightly` – nightly builds from `develop`
-- `pandabytelabs/traeky:<version>` – versioned images (matching the app version shown above)
-
-Tags:
-
-- **Stable (main)** → `latest`, `stable`, and `:<version>`
-- **Pre-release (develop)** → `testing` and `:<version>`
-- **Nightly (develop)** → `nightly`
-
----
-
-## Quick start with Docker (recommended)
-
-### Run the stable image
-
-```bash
-docker run --rm -p 5173:5173 --name traeky pandabytelabs/traeky:latest
-```
-
-Now open:
+## Architecture
 
 ```text
-http://localhost:5173
+Browser
+  ├─ Web Crypto: PBKDF2-SHA-256 + AES-GCM
+  ├─ localStorage: encrypted vault only
+  ├─ CSV import/export and local PDF report generation
+  └─ Optional sync push/pull via anonymous Sync-Key + optional Cloud Auth-Secret
+
+Go binary
+  ├─ serves embedded frontend
+  ├─ /api/v1/info
+  └─ /api/v1/vaults/{sync_key}: encrypted blob storage
+
+Filesystem
+  └─ /data/{sync_key}.json with revision metadata, optional auth hash, and encrypted JSON body
 ```
 
-### Run the testing (pre-release) image
+The Cloud service has no user accounts and no login endpoint. The generated Sync-Key is an unguessable locator for one encrypted vault. The user's vault passphrase remains in the browser and is never sent to the server.
+
+For stronger access control, the dashboard also generates a Cloud Auth-Secret. This secret is **not** a decryption key and must not be confused with the vault passphrase. The browser sends a SHA-256 proof of the Auth-Secret in `X-Traeky-Vault-Auth`; the server stores only a salted PBKDF2-HMAC-SHA-256 hash of that proof. When enabled, someone who learns only the Sync-Key cannot fetch, overwrite, or delete the encrypted blob.
+
+## Run locally
 
 ```bash
-docker run --rm -p 5173:5173 --name traeky-testing pandabytelabs/traeky:testing
+go run ./cmd/traeky
+# open http://localhost:8080
 ```
 
-### Environment variables
-
-The app supports configuration via environment variables.
-
-- `TRAEKY_ALLOWED_HOSTS`
-  - Controls which `Host` headers the dev server will accept
-  - Examples:
-    - `TRAEKY_ALLOWED_HOSTS=example.com`
-    - `TRAEKY_ALLOWED_HOSTS=example.net,example.com`
-    - `TRAEKY_ALLOWED_HOSTS=all` (or `true` / `*`) to allow all hosts
-
-Example with a restricted host allowlist:
+## Docker
 
 ```bash
-docker run --rm \
-  -p 5173:5173 \
-  -e TRAEKY_ALLOWED_HOSTS=myTraekyDomain.tld \
-  --name traeky \
-  pandabytelabs/traeky:latest
+docker compose up --build
+# open http://localhost:8080
 ```
 
----
+Useful environment variables:
 
-## Self-hosting without Docker
+| Variable | Default | Description |
+| --- | --- | --- |
+| `TRAEKY_ADDR` | `:8080` | HTTP listen address |
+| `TRAEKY_MODE` | `all` | `all`, `app`, or `cloud` |
+| `TRAEKY_DATA_DIR` | `./data` | Cloud vault storage path |
+| `TRAEKY_MAX_PAYLOAD_BYTES` | `26214400` | Max encrypted vault upload size |
+| `TRAEKY_CORS_ORIGINS` | empty | Comma-separated allowed frontend origins for separate Cloud hosting |
 
-You can also build and host Traeky yourself, e.g. on your own server or behind a reverse proxy.
+## Cloud API
 
-### 1. Install dependencies
-
-You need:
-
-- Node.js 20+
-- npm (comes with Node)
-
-Install dependencies:
+### Service info
 
 ```bash
-npm install
+curl http://localhost:8080/api/v1/info
 ```
 
-### 2. Development server (for local usage)
+### First upload of encrypted vault
+
+Use a generated Sync-Key with at least 32 allowed characters. `If-None-Match: *` makes the first upload collision-safe: if the key is already occupied, the server responds with `409 Conflict`.
 
 ```bash
-npm run dev -- --host 0.0.0.0 --port 5173
+curl -X PUT http://localhost:8080/api/v1/vaults/vault_example_random_32_chars_minimum \
+  -H 'If-None-Match: *' \
+  -H 'Content-Type: application/json' \
+  -H 'X-Traeky-Vault-Auth: ta1_client_side_auth_proof_optional' \
+  -d '{"body":{"format":"traeky-vault","version":2,"ciphertext":"opaque"}}'
 ```
 
-Then open:
+The `X-Traeky-Vault-Auth` header is optional. If it is present on first upload, the vault becomes protected and future GET, PUT, and DELETE requests must provide the same proof. The dashboard generates this proof from the Cloud Auth-Secret automatically.
 
-```text
-http://localhost:5173
-```
+### Update encrypted vault
 
-This mode is intended for development and local testing.
-
-### 3. Production build
-
-Create a production build:
+After a successful upload or pull, use the returned `revision` or `ETag` as `If-Match`.
 
 ```bash
-npm run build
+curl -X PUT http://localhost:8080/api/v1/vaults/vault_example_random_32_chars_minimum \
+  -H 'If-Match: 1' \
+  -H 'Content-Type: application/json' \
+  -H 'X-Traeky-Vault-Auth: ta1_client_side_auth_proof_optional' \
+  -d '{"body":{"format":"traeky-vault","version":2,"ciphertext":"opaque-v2"}}'
 ```
 
-This will generate static assets in the `dist/` directory.
+### Rotate Cloud Auth-Secret
 
-You can serve `dist/` with any static file server, for example:
+A protected vault can rotate its Cloud Auth-Secret by proving the current secret and sending a new proof:
 
 ```bash
-npm install -g serve
-serve dist
+curl -X PUT http://localhost:8080/api/v1/vaults/vault_example_random_32_chars_minimum \
+  -H 'If-Match: 2' \
+  -H 'Content-Type: application/json' \
+  -H 'X-Traeky-Vault-Auth: ta1_old_client_side_auth_proof' \
+  -H 'X-Traeky-New-Vault-Auth: ta1_new_client_side_auth_proof' \
+  -d '{"body":{"format":"traeky-vault","version":2,"ciphertext":"opaque-v3"}}'
 ```
 
-Or configure a reverse proxy like Nginx / Caddy to serve the `dist` directory over HTTPS.
-
----
-
-## Running your own Docker image (self-built)
-
-If you prefer to build your own image instead of using the public Docker Hub images:
+### Download encrypted vault
 
 ```bash
-# Build the image
-docker build -t traeky:local .
-
-# Run it
-docker run --rm -p 5173:5173 --name traeky-local traeky:local
+curl http://localhost:8080/api/v1/vaults/vault_example_random_32_chars_minimum \
+  -H 'X-Traeky-Vault-Auth: ta1_client_side_auth_proof_optional'
 ```
 
-You can then tag & push it to your own registry if you like.
+If the vault was created without a Cloud Auth-Secret, the header is not required. If the vault is protected and the header is missing or wrong, the server returns `401 Unauthorized`.
 
----
+## PDF report export
 
-## Branch and release model
+The dashboard includes a client-side PDF report export under **Import / Export**. The PDF is generated in the browser from the decrypted local vault and contains:
 
-- `develop`
-  - Active development
-  - Dependabot pull requests are opened against this branch
-  - Pre-releases (GitHub pre-release) are built from `develop`
-  - Docker tag: `testing` + version tag or `nightly` for nightly
+- profile and generation timestamp
+- portfolio summary
+- holdings table
+- transaction table with ID, chain links, timestamp, asset, type, amount, price, value, currency, source, TX-ID/note
+- tax/legal disclaimer
 
-- `main`
-  - Stable, tested code
-  - Normal (non pre-release) GitHub Releases are created from `main`
-  - Docker tags: `latest`, `stable` + version tag
+No report data is sent to the Cloud service for PDF generation.
 
----
+## Development
 
-## Contributing
+```bash
+make fmt
+make test
+make vet
+make build
+```
 
-The project is currently focused on private, non-commercial usage.
-If you want to contribute improvements, feel free to open an issue or a pull request.
-Please respect the license terms below.
+The frontend intentionally has no npm dependency chain. The browser app is embedded into the Go binary using `embed`.
 
----
+## Container publishing
 
-## License
+`.github/workflows/docker-publish.yml` publishes multi-arch images to GHCR on `main` and version tags. Docker Hub publishing is enabled when these repository secrets exist:
 
-This project is distributed under the **Traeky Non-Commercial License** (see `LICENSE`).
+- `DOCKERHUB_USERNAME`
+- `DOCKERHUB_TOKEN`
 
-In short:
+## Migration paths
 
-- You may use Traeky for personal, non-commercial purposes.
-- You may modify the code for your private use.
-- You must keep the original copyright notices.
-- You may not use Traeky or derivatives for commercial purposes (including paid services or SaaS).
-- You may not sell or re-license Traeky.
+1. **Automatic browser migration:** The start screen detects old keys such as `traeky:transactions`, `traeky:app-config`, `traeky:profiles:index`, and `traeky:profile:{id}:data`.
+2. **Encrypted legacy profile migration:** Select the old profile and enter its passphrase; the new vault is re-encrypted in the new format.
+3. **CSV fallback:** Import a Traeky CSV in the dashboard under Import / Export.
 
-The full license text can be found in the `LICENSE` file in this repository.
+## Limits and next hardening steps
 
-[release-shield]: https://img.shields.io/github/v/release/pandabytelabs/Traeky.svg?style=for-the-badge
-[release-url]: https://github.com/pandabytelabs/traeky/releases/latest
+This implementation is complete enough to run and extend, but for a public release I recommend adding CSP nonce generation, rate limiting middleware, more browser-level E2E tests, optional passkey-based local unlock, and a formal external security review.
